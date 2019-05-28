@@ -2,16 +2,20 @@ package com.myzmds.ecp.core.uid.worker;
 
 import java.io.File;
 import java.net.ServerSocket;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.beans.factory.InitializingBean;
 
+import com.myzmds.ecp.core.uid.baidu.utils.NamingThreadFactory;
 import com.myzmds.ecp.core.uid.util.WorkerIdUtils;
 
 /**
  * @类名称 AbstractIntervalWorkId.java
- * @类描述 <pre></pre>
- * @作者  庄梦蝶殇 linhuaichuan@veredholdings.com
+ * @类描述 <pre>WorkId生成基类</pre>
+ * @作者  庄梦蝶殇 linhuaichuan1989@126.com
  * @创建时间 2019年1月17日 下午4:21:17
  * @版本 1.0.0
  *
@@ -29,7 +33,14 @@ public abstract class AbstractIntervalWorkId implements WorkerIdAssigner, Initia
      */
     public static final String PID_ROOT = "/data/pids/";
     
-    // 心跳原子标识
+    /**
+     * 线程名-心跳
+     */
+    public static final String THREAD_HEARTBEAT_NAME = "zk_heartbeat";
+    
+    /**
+     * 心跳原子标识
+     */
     protected AtomicBoolean active = new AtomicBoolean(false);
     
     /**
@@ -72,9 +83,11 @@ public abstract class AbstractIntervalWorkId implements WorkerIdAssigner, Initia
             if (diff < 0) {// 当前时间小于活跃节点的平均心跳时间，证明出现时间回拨，进入等待。
                 WorkerIdUtils.sleepMs(interval * 2, diff);
             }
-            startHeartBeatThread();
-            // 赋值workerId
-            WorkerIdUtils.writePidFile(pidHome + File.separatorChar + pidName + WorkerIdUtils.WORKER_SPLIT + workerId);
+            if (null != workerId) {
+                startHeartBeatThread();
+                // 赋值workerId
+                WorkerIdUtils.writePidFile(pidHome + File.separatorChar + pidName + WorkerIdUtils.WORKER_SPLIT + workerId);
+            }
         } catch (Exception e) {
             active.set(false);
             if (null != socket) {
@@ -96,31 +109,27 @@ public abstract class AbstractIntervalWorkId implements WorkerIdAssigner, Initia
      * @功能描述 <pre>心跳线程，用于每隔一段时间上报一次临时节点时间</pre>
      */
     protected void startHeartBeatThread() {
-        Thread heartBeat = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (active.get() == true) {
-                    if (where()) {
-                        try {
-                            report();
-                        } catch (Exception e) {
-                        }
-                    }
-                    try {
-                        Thread.sleep(interval);
-                    } catch (InterruptedException e) {
-                        
-                    }
-                }
+        ScheduledExecutorService scheduledpool = new ScheduledThreadPoolExecutor(1, new NamingThreadFactory(THREAD_HEARTBEAT_NAME, true));
+        scheduledpool.scheduleAtFixedRate(() -> {
+            if (active.get() == false) {
+                scheduledpool.shutdownNow();
+            } else if (where()) {
+                report();
             }
-        });
-        heartBeat.setName("uid 节点心跳");
-        heartBeat.setDaemon(true);
-        heartBeat.start();
+        }, 0L, interval, TimeUnit.MILLISECONDS);
     }
     
+    /**
+     * @方法名称 where
+     * @功能描述 <pre>心跳条件</pre>
+     * @return true:执行心跳上报，false:空动作
+     */
     public abstract boolean where();
     
+    /**
+     * @方法名称 report
+     * @功能描述 <pre>心跳上报</pre>
+     */
     public abstract void report();
     
     @Override

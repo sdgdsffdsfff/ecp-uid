@@ -5,31 +5,41 @@ import java.sql.SQLException;
 import java.util.Date;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 
+import com.myzmds.ecp.core.uid.baidu.utils.NamingThreadFactory;
+
 /**
  * @类名称 SegmentServiceImpl.java
  * @类描述 <pre>Segment 策略id生成实现类</pre>
  * @作者 庄梦蝶殇 linhuaichuan1989@126.com
  * @创建时间 2018年9月6日 下午4:28:36
- * @版本 1.0.1
+ * @版本 1.0.2
  *
  * @修改记录
  * <pre>
  *     版本                       修改人 		修改日期 		 修改内容描述
  *     ----------------------------------------------
  *     1.0.0    庄梦蝶殇    2018年09月06日             
- *     1.0.1    庄梦蝶殇    2019年02月28日             修改
+ *     1.0.1    庄梦蝶殇    2019年02月28日             更改阈值碰撞时重复执行问题
+ *     1.0.2    庄梦蝶殇    2019年03月06日             突破并发数被step限制的bug
  *     ----------------------------------------------
  * </pre>
  */
 public class SegmentServiceImpl implements ISegmentService {
+    
+    /**
+     * 线程名-心跳
+     */
+    public static final String THREAD_BUFFER_NAME = "leaf_buffer_sw";
     
     private static ReentrantLock lock = new ReentrantLock();
     
@@ -71,7 +81,7 @@ public class SegmentServiceImpl implements ISegmentService {
     public SegmentServiceImpl(JdbcTemplate jdbcTemplate, String bizTag) {
         this.jdbcTemplate = jdbcTemplate;
         if (taskExecutor == null) {
-            taskExecutor = Executors.newSingleThreadExecutor();
+            taskExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(), new NamingThreadFactory(THREAD_BUFFER_NAME));
         }
         this.bizTag = bizTag;
         segment[0] = doUpdateNextSegment(bizTag);// 获取第一段buffer缓冲
@@ -82,7 +92,7 @@ public class SegmentServiceImpl implements ISegmentService {
     @Override
     public Long getId() {
         // 1.0.1 fix:uid:ecp-190227001 #1(github)更改阈值(middle与max)lock在高速碰撞时的可能多次执行
-        Long nextId = null;//下一个id
+        Long nextId = null;// 下一个id
         if (segment[index()].getMiddleId().equals(currentId.longValue()) || segment[index()].getMaxId().equals(currentId.longValue())) {
             try {
                 lock.lock();
@@ -98,7 +108,8 @@ public class SegmentServiceImpl implements ISegmentService {
                 lock.unlock();
             }
         }
-        return null == nextId ? currentId.incrementAndGet() : nextId;// 原子类递增
+        nextId = null == nextId ? currentId.incrementAndGet() : nextId;
+        return nextId <= segment[index()].getMaxId() ? nextId : getId();// 1.0.2 fix:uid:ecp-190306001 突破并发数被step限制的bug
     }
     
     /**
@@ -176,7 +187,8 @@ public class SegmentServiceImpl implements ISegmentService {
         final IdSegment currentSegment = new IdSegment();
         this.jdbcTemplate.query(querySql, new String[] {bizTag}, new RowCallbackHandler() {
             @Override
-            public void processRow(ResultSet rs) throws SQLException {
+            public void processRow(ResultSet rs)
+                throws SQLException {
                 Long step = null;
                 Long currentMaxId = null;
                 step = rs.getLong("step");
@@ -223,6 +235,7 @@ public class SegmentServiceImpl implements ISegmentService {
         this.jdbcTemplate = jdbcTemplate;
     }
     
+    @Override
     public void setBizTag(String bizTag) {
         this.bizTag = bizTag;
     }

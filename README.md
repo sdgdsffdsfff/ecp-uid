@@ -14,7 +14,7 @@
 二、策略说明
 -------------------
    1、snowflake
-     snowflake 是基于Twitter[snowflake](https://github.com/twitter/snowflake) 算法的优化策略
+     snowflake 是基于Twitter [snowflake](https://github.com/twitter/snowflake) 算法的优化策略
      本策略优化了闰秒回拨处理、新增默认workId 与 datacenterId 的提供方法。
      <bean id="snowflakeUidStrategy" class="**.TwitterSnowflakeStrategy"/> 
      
@@ -43,7 +43,7 @@
          * SimpleWorkerIdAssigner ，固定了workId的提供。值为0.示例：
 		<bean id="simpleWorker" class="**.SimpleWorkerIdAssigner"/>
          
-         * ZkWorkerIdAssigner ，利用zookeeper来实现wordId的提供管理，依赖了zk-client框架.示例：
+         * ZkWorkerIdAssigner ，利用zookeeper来实现wordId的提供管理，依赖原生Zookeeper驱动.示例：
 		<bean id="zkWorker" class="**.ZkWorkerIdAssigner"/>
 		可设置interval-心跳间隔、pidHome-workerId文件存储目录、zkAddress-zk地址、pidPort-心跳端口
          
@@ -113,7 +113,7 @@
 	   那么配置成```{"workerBits":27,"timeBits":30,"seqBits":6}```时, 可支持37个节点以整体并发量2400 UID/s的速度持续运行34年.
                            
    3、segment
-     segment 是基于美团[leaf-segment](https://tech.meituan.com/MT_Leaf.html) 的优化策略, 使用双Buffer实现。依赖数据库与spring-jdbc框架
+     是 基于美团[leaf-segment](https://tech.meituan.com/MT_Leaf.html) 的优化策略, 使用双Buffer实现。依赖数据库与spring-jdbc框架
      <bean id="leafUidStrategy" class="**.LeafSegmentStrategy"/> 
      
      (1)、SegmentServiceImpl 是具体实现类，数据库表结构为(mysql示例)：
@@ -124,7 +124,7 @@
 		MAX_ID BIGINT NOT NULL COMMENT '最大值',
 		LAST_UPDATE_TIME TIMESTAMP NOT NULL COMMENT '上次修改时间',
 		CURRENT_UPDATE_TIME TIMESTAMP NOT NULL COMMENT '当前修改时间',
-		PRIMARY KEY(ID)
+		PRIMARY KEY(BIZ_TAG)
 	  ) COMMENT='号段存储表',ENGINE = INNODB;
      
      (2)、支持 同步/异步两种更新数据库方式。可选配置asynLoadingSegment(true-异步，false-同步)，默认使用异步。
